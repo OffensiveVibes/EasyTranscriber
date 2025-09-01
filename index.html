@@ -383,21 +383,75 @@
         document.getElementById('transcribeFile').addEventListener('click', function() {
             if (!audioFile) return;
 
-            document.getElementById('fileStatus').textContent = 'Processing audio file...';
-            document.getElementById('fileStatus').className = 'status processing';
-
-            // Note: This is a placeholder for file transcription
-            // In a real implementation, you would need to:
-            // 1. Convert audio to a format compatible with Web Speech API
-            // 2. Or use a cloud service like Google Cloud Speech-to-Text, AWS Transcribe, etc.
-            // 3. Or implement Web Audio API to play the file and capture with speech recognition
-
-            setTimeout(() => {
-                document.getElementById('fileStatus').textContent = 'File transcription requires additional setup with cloud services. Use live recording for now.';
-                document.getElementById('fileStatus').className = 'status';
-                document.getElementById('transcriptText').value += '\n\n[Note: File transcription feature requires integration with cloud speech services like Google Cloud Speech-to-Text or AWS Transcribe. Currently only live speech recognition is available.]';
-            }, 2000);
+            transcribeAudioFile();
         });
+
+        async function transcribeAudioFile() {
+            try {
+                document.getElementById('fileStatus').textContent = 'Processing audio file...';
+                document.getElementById('fileStatus').className = 'status processing';
+                document.getElementById('transcribeFile').disabled = true;
+
+                // Create audio context
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await audioFile.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                // Create source and destination
+                const source = audioContext.createBufferSource();
+                const destination = audioContext.createMediaStreamDestination();
+                
+                source.buffer = audioBuffer;
+                source.connect(destination);
+
+                // Set up speech recognition for the audio stream
+                const streamRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                streamRecognition.continuous = true;
+                streamRecognition.interimResults = false;
+                streamRecognition.lang = 'en-US';
+
+                let transcriptParts = [];
+
+                streamRecognition.onresult = function(event) {
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            transcriptParts.push(event.results[i][0].transcript);
+                            document.getElementById('transcriptText').value = transcriptParts.join(' ');
+                        }
+                    }
+                };
+
+                streamRecognition.onerror = function(event) {
+                    document.getElementById('fileStatus').textContent = 'Transcription error: ' + event.error;
+                    document.getElementById('fileStatus').className = 'status';
+                    document.getElementById('transcribeFile').disabled = false;
+                };
+
+                streamRecognition.onend = function() {
+                    document.getElementById('fileStatus').textContent = 'Transcription completed!';
+                    document.getElementById('fileStatus').className = 'status ready';
+                    document.getElementById('transcribeFile').disabled = false;
+                    audioContext.close();
+                };
+
+                // Start recognition and play audio
+                streamRecognition.start();
+                source.start(0);
+
+                // Stop recognition when audio ends
+                source.onended = function() {
+                    setTimeout(() => {
+                        streamRecognition.stop();
+                    }, 1000);
+                };
+
+            } catch (error) {
+                console.error('Transcription error:', error);
+                document.getElementById('fileStatus').textContent = 'Error processing audio file. Try a different format or use live recording.';
+                document.getElementById('fileStatus').className = 'status';
+                document.getElementById('transcribeFile').disabled = false;
+            }
+        }
 
         document.getElementById('copyTranscript').addEventListener('click', function() {
             const transcriptText = document.getElementById('transcriptText');
