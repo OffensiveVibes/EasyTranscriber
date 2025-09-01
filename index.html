@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Transcriber</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #8B4513 0%, #D2B48C 50%, #A0522D 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(222, 184, 135, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #654321;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            color: #8B4513;
+            font-size: 1.1rem;
+            opacity: 0.8;
+        }
+
+        .upload-section {
+            background: rgba(139, 69, 19, 0.1);
+            border: 2px dashed #8B4513;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            background: rgba(139, 69, 19, 0.15);
+            border-color: #654321;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-btn {
+            background: linear-gradient(45deg, #8B4513, #A0522D);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .audio-player {
+            width: 100%;
+            margin: 20px 0;
+            border-radius: 10px;
+            background: #654321;
+        }
+
+        .audio-player::-webkit-media-controls-panel {
+            background-color: #654321;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .control-btn {
+            background: linear-gradient(45deg, #654321, #8B4513);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .control-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .control-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .transcript-section {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+            min-height: 200px;
+            border: 2px solid #D2B48C;
+        }
+
+        .transcript-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #D2B48C;
+            padding-bottom: 10px;
+        }
+
+        .transcript-header h3 {
+            color: #654321;
+            font-size: 1.3rem;
+        }
+
+        .copy-btn {
+            background: linear-gradient(45deg, #D2B48C, #DEB887);
+            color: #654321;
+            border: 2px solid #8B4513;
+            padding: 8px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: linear-gradient(45deg, #DEB887, #F5DEB3);
+            transform: translateY(-1px);
+        }
+
+        .transcript-text {
+            background: white;
+            border: 2px solid #D2B48C;
+            border-radius: 10px;
+            padding: 15px;
+            min-height: 150px;
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #654321;
+            resize: vertical;
+            width: 100%;
+            font-family: inherit;
+        }
+
+        .status {
+            text-align: center;
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+
+        .status.recording {
+            background: rgba(255, 0, 0, 0.1);
+            color: #8B0000;
+            border: 2px solid rgba(255, 0, 0, 0.3);
+        }
+
+        .status.processing {
+            background: rgba(255, 165, 0, 0.1);
+            color: #FF8C00;
+            border: 2px solid rgba(255, 165, 0, 0.3);
+        }
+
+        .status.ready {
+            background: rgba(0, 128, 0, 0.1);
+            color: #008000;
+            border: 2px solid rgba(0, 128, 0, 0.3);
+        }
+
+        .live-section {
+            background: rgba(139, 69, 19, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 2px solid #D2B48C;
+        }
+
+        .live-section h3 {
+            color: #654321;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .transcript-header {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ Audio Transcriber</h1>
+            <p>Upload audio files or record live speech for transcription</p>
+        </div>
+
+        <!-- Live Recording Section -->
+        <div class="live-section">
+            <h3>Live Speech Recognition</h3>
+            <div class="controls">
+                <button class="control-btn" id="startLive">Start Live Recording</button>
+                <button class="control-btn" id="stopLive" disabled>Stop Recording</button>
+                <button class="control-btn" id="clearLive">Clear Transcript</button>
+            </div>
+            <div class="status" id="liveStatus">Ready to record</div>
+        </div>
+
+        <!-- File Upload Section -->
+        <div class="upload-section" id="uploadSection">
+            <h3 style="color: #8B4513; margin-bottom: 15px;">Upload Audio File</h3>
+            <p style="color: #654321; margin-bottom: 20px;">
+                Click to select an audio file (MP3, WAV, M4A, etc.)
+            </p>
+            <input type="file" id="audioFile" class="file-input" accept="audio/*">
+            <button class="upload-btn" onclick="document.getElementById('audioFile').click()">
+                Choose Audio File
+            </button>
+        </div>
+
+        <!-- Audio Player -->
+        <audio id="audioPlayer" class="audio-player" controls style="display: none;">
+            Your browser does not support the audio element.
+        </audio>
+
+        <!-- File Processing Controls -->
+        <div class="controls" id="fileControls" style="display: none;">
+            <button class="control-btn" id="transcribeFile">Transcribe Audio File</button>
+        </div>
+
+        <div class="status" id="fileStatus" style="display: none;">Ready to transcribe</div>
+
+        <!-- Transcript Section -->
+        <div class="transcript-section">
+            <div class="transcript-header">
+                <h3>📝 Transcript</h3>
+                <button class="copy-btn" id="copyTranscript">Copy to Clipboard</button>
+            </div>
+            <textarea class="transcript-text" id="transcriptText" placeholder="Your transcription will appear here..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        let recognition = null;
+        let isRecording = false;
+        let audioFile = null;
+
+        // Initialize speech recognition
+        function initSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+            } else if ('SpeechRecognition' in window) {
+                recognition = new SpeechRecognition();
+            } else {
+                document.getElementById('liveStatus').textContent = 'Speech recognition not supported in this browser';
+                document.getElementById('liveStatus').className = 'status';
+                return false;
+            }
+
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = function() {
+                isRecording = true;
+                document.getElementById('liveStatus').textContent = '🎙️ Recording... Speak now!';
+                document.getElementById('liveStatus').className = 'status recording';
+                document.getElementById('startLive').disabled = true;
+                document.getElementById('stopLive').disabled = false;
+            };
+
+            recognition.onresult = function(event) {
+                let transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    transcript += event.results[i][0].transcript;
+                }
+                document.getElementById('transcriptText').value = transcript;
+            };
+
+            recognition.onerror = function(event) {
+                document.getElementById('liveStatus').textContent = 'Error: ' + event.error;
+                document.getElementById('liveStatus').className = 'status';
+                isRecording = false;
+                document.getElementById('startLive').disabled = false;
+                document.getElementById('stopLive').disabled = true;
+            };
+
+            recognition.onend = function() {
+                isRecording = false;
+                document.getElementById('liveStatus').textContent = 'Recording stopped';
+                document.getElementById('liveStatus').className = 'status ready';
+                document.getElementById('startLive').disabled = false;
+                document.getElementById('stopLive').disabled = true;
+            };
+
+            return true;
+        }
+
+        // Event listeners
+        document.getElementById('startLive').addEventListener('click', function() {
+            if (recognition) {
+                recognition.start();
+            }
+        });
+
+        document.getElementById('stopLive').addEventListener('click', function() {
+            if (recognition && isRecording) {
+                recognition.stop();
+            }
+        });
+
+        document.getElementById('clearLive').addEventListener('click', function() {
+            document.getElementById('transcriptText').value = '';
+            document.getElementById('liveStatus').textContent = 'Transcript cleared - Ready to record';
+            document.getElementById('liveStatus').className = 'status ready';
+        });
+
+        document.getElementById('audioFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                audioFile = file;
+                const audioPlayer = document.getElementById('audioPlayer');
+                const url = URL.createObjectURL(file);
+                audioPlayer.src = url;
+                audioPlayer.style.display = 'block';
+                document.getElementById('fileControls').style.display = 'flex';
+                document.getElementById('fileStatus').style.display = 'block';
+                document.getElementById('fileStatus').textContent = `File loaded: ${file.name}`;
+                document.getElementById('fileStatus').className = 'status ready';
+            }
+        });
+
+        document.getElementById('transcribeFile').addEventListener('click', function() {
+            if (!audioFile) return;
+
+            document.getElementById('fileStatus').textContent = 'Processing audio file...';
+            document.getElementById('fileStatus').className = 'status processing';
+
+            // Note: This is a placeholder for file transcription
+            // In a real implementation, you would need to:
+            // 1. Convert audio to a format compatible with Web Speech API
+            // 2. Or use a cloud service like Google Cloud Speech-to-Text, AWS Transcribe, etc.
+            // 3. Or implement Web Audio API to play the file and capture with speech recognition
+
+            setTimeout(() => {
+                document.getElementById('fileStatus').textContent = 'File transcription requires additional setup with cloud services. Use live recording for now.';
+                document.getElementById('fileStatus').className = 'status';
+                document.getElementById('transcriptText').value += '\n\n[Note: File transcription feature requires integration with cloud speech services like Google Cloud Speech-to-Text or AWS Transcribe. Currently only live speech recognition is available.]';
+            }, 2000);
+        });
+
+        document.getElementById('copyTranscript').addEventListener('click', function() {
+            const transcriptText = document.getElementById('transcriptText');
+            transcriptText.select();
+            document.execCommand('copy');
+            
+            const copyBtn = document.getElementById('copyTranscript');
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '✓ Copied!';
+            copyBtn.style.background = 'linear-gradient(45deg, #90EE90, #98FB98)';
+            
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+                copyBtn.style.background = 'linear-gradient(45deg, #D2B48C, #DEB887)';
+            }, 2000);
+        });
+
+        // Drag and drop functionality
+        const uploadSection = document.getElementById('uploadSection');
+
+        uploadSection.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadSection.style.background = 'rgba(139, 69, 19, 0.2)';
+        });
+
+        uploadSection.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadSection.style.background = 'rgba(139, 69, 19, 0.1)';
+        });
+
+        uploadSection.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadSection.style.background = 'rgba(139, 69, 19, 0.1)';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('audio/')) {
+                document.getElementById('audioFile').files = files;
+                document.getElementById('audioFile').dispatchEvent(new Event('change'));
+            }
+        });
+
+        // Initialize the app
+        window.onload = function() {
+            const speechSupported = initSpeechRecognition();
+            if (!speechSupported) {
+                document.querySelector('.live-section').style.display = 'none';
+            }
+        };
+    </script>
+</body>
+</html>
