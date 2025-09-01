@@ -382,69 +382,33 @@
 
         document.getElementById('transcribeFile').addEventListener('click', function() {
             if (!audioFile) return;
-            transcribeWithWhisper();
+            transcribeWithFreeAPI();
         });
 
-        async function transcribeWithWhisper() {
+        async function transcribeWithFreeAPI() {
             try {
-                document.getElementById('fileStatus').textContent = 'Processing audio file with Whisper AI...';
+                document.getElementById('fileStatus').textContent = 'Processing audio file...';
                 document.getElementById('fileStatus').className = 'status processing';
                 document.getElementById('transcribeFile').disabled = true;
 
-                // Create FormData for file upload
-                const formData = new FormData();
-                formData.append('audio_file', audioFile);
-                formData.append('model', 'whisper-1');
-
-                // Try multiple free Whisper API endpoints
-                const endpoints = [
-                    'https://api.openai.com/v1/audio/transcriptions',
-                    'https://whisper-api-wrapper.onrender.com/transcribe',
-                    'https://whisper.lablab.ai/transcribe',
-                    'https://api.replicate.com/v1/predictions'
-                ];
-
-                let transcription = null;
+                // Try Web Speech API with file conversion first
+                const result = await transcribeAudioFileWithWebAPI();
                 
-                // Try Hugging Face Inference API (free)
-                try {
-                    const response = await fetch('https://api-inference.huggingface.co/models/openai/whisper-large-v3', {
-                        method: 'POST',
-                        body: audioFile,
-                        headers: {
-                            'Content-Type': 'audio/wav',
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const result = await response.json();
-                        if (result.text) {
-                            transcription = result.text;
-                        }
-                    }
-                } catch (e) {
-                    console.log('Hugging Face API not available:', e);
-                }
-
-                // Fallback: Use Web Speech API with better error handling
-                if (!transcription) {
-                    transcription = await transcribeWithWebSpeech();
-                }
-
-                if (transcription) {
-                    document.getElementById('transcriptText').value = transcription;
-                    document.getElementById('fileStatus').textContent = 'Transcription completed successfully!';
+                if (result) {
+                    document.getElementById('transcriptText').value = result;
+                    document.getElementById('fileStatus').textContent = 'Transcription completed!';
                     document.getElementById('fileStatus').className = 'status ready';
                 } else {
-                    throw new Error('No transcription services available');
+                    // Fallback to live transcription method
+                    document.getElementById('fileStatus').textContent = 'Switching to live transcription method...';
+                    setTimeout(() => {
+                        startFileTranscription();
+                    }, 1000);
                 }
 
             } catch (error) {
                 console.error('Transcription error:', error);
-                document.getElementById('fileStatus').textContent = 'Using fallback transcription method...';
-                document.getElementById('fileStatus').className = 'status processing';
-                
-                // Fallback to the working speaker-microphone method
+                document.getElementById('fileStatus').textContent = 'Switching to live transcription method...';
                 setTimeout(() => {
                     startFileTranscription();
                 }, 1000);
@@ -453,15 +417,38 @@
             document.getElementById('transcribeFile').disabled = false;
         }
 
-        function transcribeWithWebSpeech() {
-            return new Promise((resolve, reject) => {
-                // This is a fallback method - will resolve to null to trigger the speaker method
-                resolve(null);
+        async function transcribeAudioFileWithWebAPI() {
+            return new Promise(async (resolve) => {
+                try {
+                    // Convert audio file to playable format and use Web Audio API
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const arrayBuffer = await audioFile.arrayBuffer();
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    
+                    // Create an offline audio context for processing
+                    const offlineContext = new OfflineAudioContext(
+                        audioBuffer.numberOfChannels,
+                        audioBuffer.length,
+                        audioBuffer.sampleRate
+                    );
+                    
+                    const source = offlineContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(offlineContext.destination);
+                    source.start(0);
+                    
+                    // This approach has limitations, so we'll resolve null to use the live method
+                    resolve(null);
+                    
+                } catch (error) {
+                    console.error('Web Audio API error:', error);
+                    resolve(null);
+                }
             });
         }
 
         function startFileTranscription() {
-            document.getElementById('fileStatus').textContent = 'Starting live transcription... Please play the audio file.';
+            document.getElementById('fileStatus').textContent = 'Ready for live transcription! Click play on the audio and speak along, or let it play through speakers.';
             document.getElementById('fileStatus').className = 'status processing';
             document.getElementById('transcribeFile').disabled = true;
 
@@ -478,7 +465,7 @@
             let isTranscribing = true;
 
             fileRecognition.onstart = function() {
-                document.getElementById('fileStatus').textContent = '🎧 Listening... Audio will auto-play. Click "Stop" when finished.';
+                document.getElementById('fileStatus').textContent = '🎧 Listening for audio... Play your file now! (Click Stop when finished)';
                 document.getElementById('fileStatus').className = 'status recording';
                 
                 // Change button to stop transcription
@@ -493,7 +480,7 @@
                 const audioPlayer = document.getElementById('audioPlayer');
                 audioPlayer.currentTime = 0;
                 audioPlayer.play().catch(e => {
-                    console.log('Please click play on the audio player');
+                    document.getElementById('fileStatus').textContent = '🎧 Listening... Please click play on the audio player above.';
                 });
             };
 
@@ -517,11 +504,17 @@
             };
 
             fileRecognition.onerror = function(event) {
+                let errorMsg = 'Recognition error: ' + event.error;
+                
                 if (event.error === 'no-speech') {
-                    document.getElementById('fileStatus').textContent = 'No speech detected. Ensure audio is playing with volume up.';
-                } else {
-                    document.getElementById('fileStatus').textContent = 'Error: ' + event.error;
+                    errorMsg = 'No speech detected. Make sure:\n• Audio is playing\n• Volume is up\n• Microphone can hear the speakers';
+                } else if (event.error === 'audio-capture') {
+                    errorMsg = 'Microphone access needed. Please allow microphone permissions.';
+                } else if (event.error === 'not-allowed') {
+                    errorMsg = 'Microphone access denied. Please enable microphone permissions in your browser.';
                 }
+                
+                document.getElementById('fileStatus').textContent = errorMsg;
                 document.getElementById('fileStatus').className = 'status';
                 resetTranscriptionButton();
             };
@@ -530,15 +523,25 @@
                 if (isTranscribing) {
                     setTimeout(() => {
                         if (isTranscribing) {
-                            fileRecognition.start();
+                            try {
+                                fileRecognition.start();
+                            } catch (e) {
+                                console.log('Recognition restart failed:', e);
+                            }
                         }
                     }, 100);
                 }
             };
 
-            fileRecognition.start();
-            window.currentFileRecognition = fileRecognition;
-            window.isFileTranscribing = true;
+            try {
+                fileRecognition.start();
+                window.currentFileRecognition = fileRecognition;
+                window.isFileTranscribing = true;
+            } catch (error) {
+                document.getElementById('fileStatus').textContent = 'Speech recognition not supported in this browser. Try Chrome or Edge.';
+                document.getElementById('fileStatus').className = 'status';
+                resetTranscriptionButton();
+            }
         }
 
         function stopFileTranscription(recognition) {
@@ -547,10 +550,11 @@
                 recognition.stop();
             }
             
-            document.getElementById('fileStatus').textContent = 'Transcription completed!';
+            document.getElementById('fileStatus').textContent = 'Transcription completed! You can edit the text below.';
             document.getElementById('fileStatus').className = 'status ready';
             
-            document.getElementById('audioPlayer').pause();
+            const audioPlayer = document.getElementById('audioPlayer');
+            audioPlayer.pause();
             resetTranscriptionButton();
         }
 
@@ -558,7 +562,7 @@
             const btn = document.getElementById('transcribeFile');
             btn.textContent = 'Transcribe Audio File';
             btn.onclick = function() {
-                transcribeWithWhisper();
+                transcribeWithFreeAPI();
             };
             btn.disabled = false;
         }
