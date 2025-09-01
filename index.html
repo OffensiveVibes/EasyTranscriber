@@ -382,75 +382,119 @@
 
         document.getElementById('transcribeFile').addEventListener('click', function() {
             if (!audioFile) return;
-
-            transcribeAudioFile();
+            startFileTranscription();
         });
 
-        async function transcribeAudioFile() {
-            try {
-                document.getElementById('fileStatus').textContent = 'Processing audio file...';
-                document.getElementById('fileStatus').className = 'status processing';
-                document.getElementById('transcribeFile').disabled = true;
+        function startFileTranscription() {
+            document.getElementById('fileStatus').textContent = 'Starting transcription... Please play the audio file and keep this tab active.';
+            document.getElementById('fileStatus').className = 'status processing';
+            document.getElementById('transcribeFile').disabled = true;
 
-                // Create audio context
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const arrayBuffer = await audioFile.arrayBuffer();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            // Clear previous transcript
+            document.getElementById('transcriptText').value = '';
 
-                // Create source and destination
-                const source = audioContext.createBufferSource();
-                const destination = audioContext.createMediaStreamDestination();
+            // Set up speech recognition
+            const fileRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            fileRecognition.continuous = true;
+            fileRecognition.interimResults = true;
+            fileRecognition.lang = 'en-US';
+
+            let finalTranscript = '';
+            let isTranscribing = true;
+
+            fileRecognition.onstart = function() {
+                document.getElementById('fileStatus').textContent = '🎧 Listening... Play your audio file now! Click "Stop File Transcription" when done.';
+                document.getElementById('fileStatus').className = 'status recording';
                 
-                source.buffer = audioBuffer;
-                source.connect(destination);
+                // Change button to stop transcription
+                const btn = document.getElementById('transcribeFile');
+                btn.textContent = 'Stop File Transcription';
+                btn.onclick = function() {
+                    stopFileTranscription(fileRecognition);
+                };
+                btn.disabled = false;
 
-                // Set up speech recognition for the audio stream
-                const streamRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                streamRecognition.continuous = true;
-                streamRecognition.interimResults = false;
-                streamRecognition.lang = 'en-US';
+                // Auto-play the audio file
+                const audioPlayer = document.getElementById('audioPlayer');
+                audioPlayer.currentTime = 0;
+                audioPlayer.play().catch(e => {
+                    console.log('Auto-play prevented, please click play on the audio player');
+                });
+            };
 
-                let transcriptParts = [];
-
-                streamRecognition.onresult = function(event) {
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                            transcriptParts.push(event.results[i][0].transcript);
-                            document.getElementById('transcriptText').value = transcriptParts.join(' ');
-                        }
+            fileRecognition.onresult = function(event) {
+                let interimTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript + ' ';
+                    } else {
+                        interimTranscript += transcript;
                     }
-                };
+                }
+                
+                document.getElementById('transcriptText').value = finalTranscript + interimTranscript;
+                
+                // Auto-scroll to bottom
+                const textArea = document.getElementById('transcriptText');
+                textArea.scrollTop = textArea.scrollHeight;
+            };
 
-                streamRecognition.onerror = function(event) {
-                    document.getElementById('fileStatus').textContent = 'Transcription error: ' + event.error;
-                    document.getElementById('fileStatus').className = 'status';
-                    document.getElementById('transcribeFile').disabled = false;
-                };
-
-                streamRecognition.onend = function() {
-                    document.getElementById('fileStatus').textContent = 'Transcription completed!';
-                    document.getElementById('fileStatus').className = 'status ready';
-                    document.getElementById('transcribeFile').disabled = false;
-                    audioContext.close();
-                };
-
-                // Start recognition and play audio
-                streamRecognition.start();
-                source.start(0);
-
-                // Stop recognition when audio ends
-                source.onended = function() {
-                    setTimeout(() => {
-                        streamRecognition.stop();
-                    }, 1000);
-                };
-
-            } catch (error) {
-                console.error('Transcription error:', error);
-                document.getElementById('fileStatus').textContent = 'Error processing audio file. Try a different format or use live recording.';
+            fileRecognition.onerror = function(event) {
+                console.error('Speech recognition error:', event.error);
+                if (event.error === 'no-speech') {
+                    document.getElementById('fileStatus').textContent = 'No speech detected. Make sure audio is playing and volume is up.';
+                } else if (event.error === 'audio-capture') {
+                    document.getElementById('fileStatus').textContent = 'Microphone access needed to capture audio from speakers.';
+                } else {
+                    document.getElementById('fileStatus').textContent = 'Recognition error: ' + event.error;
+                }
                 document.getElementById('fileStatus').className = 'status';
-                document.getElementById('transcribeFile').disabled = false;
+                resetTranscriptionButton();
+            };
+
+            fileRecognition.onend = function() {
+                if (isTranscribing) {
+                    // Restart recognition if it stops unexpectedly
+                    setTimeout(() => {
+                        if (isTranscribing) {
+                            fileRecognition.start();
+                        }
+                    }, 100);
+                }
+            };
+
+            // Start the recognition
+            fileRecognition.start();
+
+            // Store reference for stopping
+            window.currentFileRecognition = fileRecognition;
+            window.isFileTranscribing = true;
+        }
+
+        function stopFileTranscription(recognition) {
+            window.isFileTranscribing = false;
+            if (recognition) {
+                recognition.stop();
             }
+            
+            document.getElementById('fileStatus').textContent = 'Transcription completed! Review and edit the text below.';
+            document.getElementById('fileStatus').className = 'status ready';
+            
+            // Pause audio
+            document.getElementById('audioPlayer').pause();
+            
+            resetTranscriptionButton();
+        }
+
+        function resetTranscriptionButton() {
+            const btn = document.getElementById('transcribeFile');
+            btn.textContent = 'Transcribe Audio File';
+            btn.onclick = function() {
+                startFileTranscription();
+            };
+            btn.disabled = false;
         }
 
         document.getElementById('copyTranscript').addEventListener('click', function() {
